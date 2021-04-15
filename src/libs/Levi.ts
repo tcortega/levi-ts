@@ -2,6 +2,7 @@ import { ConfigObject, create } from "@open-wa/wa-automate";
 import MessageHandler from "../handler/Message";
 import { createLogger, Logger } from "winston";
 import LeviConfig from "../config";
+import Util from "../utils/Util";
 
 export default class Levi {
   public constructor(public readonly config: typeof LeviConfig, public readonly options: ConfigObject) {
@@ -36,6 +37,7 @@ declare module "@open-wa/wa-automate" {
   interface Client {
     handler: MessageHandler;
     config: typeof LeviConfig;
+    util: Util;
     log: Logger;
   }
   interface Message {
