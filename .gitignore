@@ -108,3 +108,4 @@ session.data.json
 
 # Node persist
 .node-persist
+.env.schema
