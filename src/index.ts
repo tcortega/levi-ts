@@ -1,7 +1,7 @@
-import { QRFormat, QRQuality } from "@open-wa/wa-automate";
+import "dotenv/config";
 import config from "./config";
 import LeviBot from "./libs/Levi";
-
+import { QRFormat, QRQuality } from "@open-wa/wa-automate";
 
 new LeviBot(config, {
   authTimeout: 0,

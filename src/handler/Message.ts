@@ -1,28 +1,36 @@
-import { Client, Message } from "@open-wa/wa-automate";
-import { join } from "path";
 import BaseCommand from "../libs/BaseCommand";
-import { ICategories } from "../typings";
+import { Client, Message } from "@open-wa/wa-automate";
+import { ICategories, IDefaultSettings } from "../typings";
+import { join } from "path";
 
 export default class MessageHandler {
-  public readonly categories: ICategories[] = [];
-  public readonly commands = new Map<string, BaseCommand>();
   public readonly cooldowns = new Map<string, Map<string, any>>();
-  public constructor(public readonly client: Client, public readonly prefix: string) { }
+  public readonly commands = new Map<string, BaseCommand>();
+  public readonly categories: ICategories[] = [];
 
-  public async runCommand(msg: Message, args: string[], command: BaseCommand): Promise<void> {
-    if (!this.cooldowns.has(command.id)) this.cooldowns.set(command.id, new Map());
-    const now = Date.now();
-    const timestamps: Map<string, number> = this.cooldowns.get(command.id)!;
-    const cooldownAmount = (command.options.cooldown ?? 10) * 1000;
-    if (timestamps.has(msg.sender.id)) {
-      const expirationTime = timestamps.get(msg.sender.id)! + cooldownAmount;
-      if (now < expirationTime) return undefined;
-      timestamps.set(msg.sender.id, now);
-      setTimeout(() => timestamps.delete(msg.sender.id), cooldownAmount);
-    } else {
-      timestamps.set(msg.sender.id, now);
-      if (msg.fromMe) timestamps.delete(msg.sender.id);
-    } try {
+  public constructor(public readonly client: Client, public readonly prefix: string) {}
+
+  public async runCommand(msg: Message, args: string[], command: BaseCommand, ignoreCooldown: boolean): Promise<void> {
+    if (!ignoreCooldown) {
+      if (!this.cooldowns.has(command.id)) this.cooldowns.set(command.id, new Map());
+
+      const now = Date.now();
+      const timestamps: Map<string, number> = this.cooldowns.get(command.id)!;
+      const cooldownAmount = (command.options.cooldown ?? 10) * 1000;
+
+      if (timestamps.has(msg.sender.id)) {
+        const expirationTime = timestamps.get(msg.sender.id)! + cooldownAmount;
+        if (now < expirationTime) return undefined;
+
+        timestamps.set(msg.sender.id, now);
+        setTimeout(() => timestamps.delete(msg.sender.id), cooldownAmount);
+      } else {
+        timestamps.set(msg.sender.id, now);
+        if (msg.fromMe) timestamps.delete(msg.sender.id);
+      }
+    }
+
+    try {
       await this.client.simulateTyping(msg.chatId, true);
       await command.exec(msg, args);
     } catch (error) {
@@ -32,31 +40,57 @@ export default class MessageHandler {
     }
   }
 
-
   public async handle(msg: Message): Promise<void> {
-    Object.assign(msg, { body: msg.type === "chat" ? msg.body : (msg.type === "image" && msg.caption) ? msg.caption : (msg.type === "video" && msg.caption) ? msg.caption : msg.body });
-    const prefix = "#";
-    if (!msg.body.toLowerCase().startsWith(prefix)) return undefined;
+    Object.assign(msg, { body: msg.type === "chat" ? msg.body : msg.type === "image" && msg.caption ? msg.caption : msg.type === "video" && msg.caption ? msg.caption : msg.body });
+    const blocked = await this.client.getBlockedIds();
+    if (blocked.includes(msg.sender.id) && !msg.fromMe) return undefined;
+    const settings = await this.getSettings(msg);
+    const ignoreCooldown = settings.cooldownBypass;
+    const prefix = await this.getPrefix(msg, settings);
+    if (!prefix || !prefix.length || !msg.body.toLowerCase().startsWith(prefix.toLowerCase())) return undefined;
     Object.assign(msg, { prefix });
-
     const args = msg.body.slice(prefix.length).trim().split(/ +/g);
-
     const commandID = args.shift();
-    const command = this.commands.get(commandID!.toLowerCase()) ?? Array.from(this.commands.values()).find(x => x.options.aliases.includes(commandID!));
+    const command = this.commands.get(commandID!.toLowerCase()) ?? Array.from(this.commands.values()).find((x) => x.options.aliases.includes(commandID!));
     if (!command) return undefined;
-
-    if (msg.isGroupMsg && msg.chat.isReadOnly) return undefined;
+    if (!msg.chat.canSend) return undefined;
+    if (command.options.devOnly) {
+      const isDev = await this.client.db.models.developer.findOne({ developer_id: msg.sender.id });
+      if (!isDev) return undefined;
+    }
     if (command.options.adminOnly && !command.options.groupOnly) return undefined;
     if (msg.isGroupMsg && command.options.adminOnly && command.options.groupOnly) {
       const { me } = await this.client.getMe();
-      const adminList = await this.client.getGroupAdmins(msg.chatId as Message["chat"]["groupMetadata"]["id"]) as string[];
+      const adminList = (await this.client.getGroupAdmins(msg.chatId as Message["chat"]["groupMetadata"]["id"])) as string[];
       if (!adminList.includes(me._serialized)) adminList.push(me._serialized);
       if (!adminList.includes(msg.sender.id)) return undefined;
     }
     if (!msg.fromMe && command.options.meOnly) return undefined;
     if (msg.isGroupMsg && command.options.privateOnly) return undefined;
     if (!msg.isGroupMsg && command.options.groupOnly) return undefined;
-    await this.runCommand(msg, args, command);
+    await this.runCommand(msg, args, command, ignoreCooldown);
+  }
+
+  public async getSettings(msg: Message): Promise<IDefaultSettings> {
+    const settings = await this.client.db.models.settings.findOne({ chatId: msg.chatId });
+
+    if (!settings) {
+      const data = Object.assign(this.client.config.defaultSettings, { chatId: msg.chatId });
+      return await this.client.db.models.settings.findOneAndUpdate({ chatId: msg.chatId }, data, { upsert: true, new: true });
+    }
+
+    return settings;
+  }
+
+  public async getPrefix(msg: Message, settings: IDefaultSettings): Promise<string | void> {
+    const prefixes: string[] = [this.client.config.prefix];
+
+    prefixes.push(settings?.prefix as string);
+
+    for (const prefix of prefixes) {
+      if (!msg.body) continue;
+      if (msg.body.toLowerCase().startsWith(prefix.toLowerCase())) return prefix;
+    }
   }
 
   public loadAll(): void {
@@ -78,7 +112,6 @@ export default class MessageHandler {
     this.client.log.info(`Loaded ${loaded.length} command.`);
   }
 
-
   public registry(command: string | BaseCommand): void {
     if (typeof command === "string") command = this.getCommand(command);
     this.addToCategory(command);
@@ -94,11 +127,11 @@ export default class MessageHandler {
   }
 
   public addToCategory(command: BaseCommand): void {
-    const category: ICategories = this.categories.find(x => x.name === command.options.category) ?? {
+    const category: ICategories = this.categories.find((x) => x.name === command.options.category) ?? {
       name: command.options.category || "Uncategorized",
-      commands: []
+      commands: [],
     };
-    if (!category.commands.some(x => x.id === command.id)) category.commands.push(command);
-    if (!this.categories.some(x => x.name === command.options.category)) this.categories.push(category);
+    if (!category.commands.some((x) => x.id === command.id)) category.commands.push(command);
+    if (!this.categories.some((x) => x.name === command.options.category)) this.categories.push(category);
   }
 }

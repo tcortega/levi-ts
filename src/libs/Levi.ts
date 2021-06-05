@@ -1,42 +1,43 @@
-import { ConfigObject, create } from "@open-wa/wa-automate";
-import MessageHandler from "../handler/Message";
-import { createLogger, Logger } from "winston";
-import LeviConfig from "../config";
 import Util from "../utils/Util";
+import LeviConfig from "../config";
+import MessageHandler from "../handler/Message";
+import { Logger } from "winston";
+import { create, ConfigObject } from "@open-wa/wa-automate";
 import { DatabaseHandler } from "../handler/Database";
+import { createLogger } from "../utils/Logger";
 
 export default class Levi {
   public constructor(public readonly config: typeof LeviConfig, public readonly options: ConfigObject) {
-    this.build(config, options);
-  }
+    void create(options).then(async (client) => {
+      const database = new DatabaseHandler(client);
+      const handler = new MessageHandler(client, this.config.prefix);
 
-  private async build(config: typeof LeviConfig, options: ConfigObject) {
-    const client = await create(options);
-    client.log = createLogger();
+      Object.assign(client, {
+        config,
+        db: database,
+        handler,
+        log: createLogger(),
+        util: new Util(client),
+      });
 
-    const database = new DatabaseHandler(client);
-    const messageHandler = new MessageHandler(client, this.config.prefix);
-    Object.assign(client, {
-      config, db: database, messageHandler,
-      util: new Util(client)
+      void handler.loadAll();
+      await database.connect();
+
+      await client.onAnyMessage(async (message) => {
+        await client.getAmountOfLoadedMessages().then((msg) => (msg >= 3000 ? client.cutMsgCache() : msg));
+        await client.sendSeen(message.chatId);
+        await handler.handle(message);
+      });
+
+      await client.onStateChanged(async (state) => {
+        if (state === "CONFLICT" || state === "UNLAUNCHED") {
+          await client.forceRefocus();
+          return undefined;
+        }
+        if (state === "CONNECTED") client.log.debug("Connected to the phone!");
+        if (state === "UNPAIRED") client.log.debug("Logged out!");
+      });
     });
-    await database.connect();
-
-    client.onAnyMessage(async message => {
-      await client.getAmountOfLoadedMessages().then(msg => msg >= 3000 ? client.cutMsgCache() : msg);
-      await client.sendSeen(message.chatId);
-      await messageHandler.handle(message);
-    });
-
-    client.onStateChanged(async state => {
-      if (state === "CONFLICT" || state === "UNLAUNCHED") {
-        await client.forceRefocus();
-        return undefined;
-      }
-      if (state === "CONNECTED") client.log.debug("Connected to WhatsApp Web!");
-      if (state === "UNPAIRED") client.log.debug("Logged out :(");
-    });
-
   }
 }
 
