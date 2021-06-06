@@ -17,7 +17,7 @@ export default class extends BaseCommand {
         const members = await this.client.getGroupMembers(msg.chatId as Message["chat"]["groupMetadata"]["id"]);
         for (const member of members) {
             if (member.isMe) continue;
-            else result.push(`@${member.id.replace(/@c.us/g, "")}`);
+            result.push(`@${member.id.replace(/@c.us/g, "")}`);
         }
         await this.client.sendTextWithMentions(msg.chatId, result.join(" "), false);
     }
