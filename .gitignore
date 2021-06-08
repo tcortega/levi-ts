@@ -84,3 +84,6 @@ session.data.json
 **.data.json
 **.node-persist**
 # end managed
+
+#database
+.env
