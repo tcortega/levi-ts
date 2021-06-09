@@ -14,7 +14,7 @@ new LeviBot(config, {
     "--disable-cache",
     "--disable-application-cache",
     "--disable-offline-load-stale-cache",
-    "--disk-cache-size=0"
+    "--disk-cache-size=0",
   ],
   deleteSessionDataOnLogout: false,
   disableSpins: true,
@@ -26,5 +26,5 @@ new LeviBot(config, {
   qrTimeout: 0,
   restartOnCrash: true,
   throwErrorOnTosBlock: false,
-  useChrome: true
-})
+  useChrome: true,
+});
