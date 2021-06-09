@@ -78,12 +78,8 @@ src/public/qrcode.png
 session.data.json
 # Node persist
 .node-persist
-.env.schema
 
-# managed
+# managed by open-wa
 **.data.json
 **.node-persist**
-# end managed
-
-#database
-.env
+# end managed by open-wa
