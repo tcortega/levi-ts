@@ -5,6 +5,7 @@ import { Logger } from "winston";
 import { create, ConfigObject } from "@open-wa/wa-automate";
 import { DatabaseHandler } from "../handler/Database";
 import { createLogger } from "../utils/Logger";
+import { TwitterScraper } from "@tcortega/twitter-scraper";
 
 export default class Levi {
   public constructor(public readonly config: typeof LeviConfig, public readonly options: ConfigObject) {
@@ -18,6 +19,7 @@ export default class Levi {
         handler,
         log: createLogger(),
         util: new Util(client),
+        twtScraper: await TwitterScraper.create(),
       });
 
       void handler.loadAll();
@@ -48,6 +50,7 @@ declare module "@open-wa/wa-automate" {
     config: typeof LeviConfig;
     util: Util;
     log: Logger;
+    twtScraper: TwitterScraper;
   }
   interface Message {
     prefix: string;
