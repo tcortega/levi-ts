@@ -29,13 +29,13 @@ Install all the dependencies, and **be sure you're in the project's directory**
 2. Build it
 ```bash
 > npm run build
-> or using yarn
+# or using yarn
 > yarn build
 ```
 3. Run it
 ```bash
 > npm start
-> or using yarn
+# or using yarn
 > yarn start
 ```
 4. A QR Code will show up in your terminal and then you can just scan it's code using your phone with whatsapp, just as you do to scan WhatsApp's Web QR codes.
